@@ -11,4 +11,6 @@ endif()
 
 add_compile_options(-Wall -Wextra -Wpedantic)
 
-add_executable(CXX_REST_API main.cpp)
+add_executable(CXX_REST_API main.cpp
+        http/http_parser.cpp
+        http/http_parser.h)
