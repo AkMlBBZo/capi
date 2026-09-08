@@ -1,21 +1,16 @@
-# артефакты сборки
-cmake-build-debug/
-cmake-build-release/
+cmake-build*/
 build/
 *.o
 *.obj
 *.exe
 
-# IDE
 .idea/
 .vscode/
 *.swp
 *.swo
 
-# логи и временные файлы
 *.log
 *.tmp
-core
-core.*
-# бинарь без расширения
+
 /main
+tests/
