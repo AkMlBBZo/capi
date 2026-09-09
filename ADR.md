@@ -36,7 +36,7 @@
 
 ---
 
-### Version: 2 - commit: current
+### Version: 2 - commit: [1d23d33b5f77b8a322176b7f6be72d9d030ec1b7](https://github.com/AkMlBBZo/capi/commit/1d23d33b5f77b8a322176b7f6be72d9d030ec1b7)
 
 ## ADR 2: класс CAPI с RAII для сокетов и epoll
 
@@ -70,7 +70,7 @@ main() стал слишком большим, всё в одном файле. 
   - OpState отделён от OpCode: категория серьёзности vs конкретная причина.
   - run() стопит только на FATAL, WARN/ERROR — логирует и продолжает.
 
-## ADR 4: readn() как метод CAPI вместо inline recv()
+## ADR 4: `readn()` (`try_recv()`) как метод CAPI вместо inline recv()
 
 **Контекст:**
 У recv несколько потенциальных ошибок, которые надо обрабатывать,
@@ -84,6 +84,27 @@ errno → OpCode (RECV_EAGAIN / RECV_CONN_RESET), пишет в last_error_.
     ошибку (return WARN) через `last_error_.code == RECV_EAGAIN`.
 
 **TODO:**
-  - Заменить readn на другое имя метода
+  - [x] Заменить readn на другое имя метода. Новое имя метода - `try_recv`
+
+---
+
+### Version: 3 - commit: current
+
+## ADR 5: std::string header = substr(...) с копией, а не string_view
+
+**Контекст:**
+Нужно читать первую строку запроса (ранее пропускалась).
+Ранее, из-за erase строки, string_view ломался и первая строка у header 
+(ранее header_view) отображалась неверно (body было в начале header)
+
+**Решение:**
+`std::string header = message.substr(0, pos + 2)` — копия. Переход
+на view отложен.
+
+**Почему так:**
+  - Исходное сообщение может редактироваться в процессе, что может сломать логику, 
+    копия хедера гарантирует правильность обработки
+  - `pos + 2` в `message.substr(...)`, т.к. `http_parser::parse_header(...)`
+    только строки, после которых есть `"\r\n"`
 
 ---

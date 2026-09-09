@@ -26,7 +26,7 @@ private:
     int epoll_ctl_set(int op, int fd);
     int set_nonblock(int fd);
 
-    ssize_t readn(int fd, char *buffer, size_t size);
+    ssize_t try_recv(int fd, char *buffer, size_t size);
 
     OpState on_accept();
     OpState on_recv(int fd);

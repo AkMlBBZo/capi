@@ -14,7 +14,7 @@
 #include <sys/epoll.h>
 
 void capi::CAPI::set_last_error(OpState state, OpCode code, int sys_errno, std::string message) {
-    std::cout << message << std::endl;
+    std::cerr << message << std::endl;
     last_error_ = {
         state,
         code,
@@ -50,7 +50,7 @@ int capi::CAPI::set_nonblock(int fd) {
     return 0;
 }
 
-ssize_t capi::CAPI::readn(int fd, char *buffer, size_t size) {
+ssize_t capi::CAPI::try_recv(int fd, char *buffer, size_t size) {
     ssize_t n = recv(fd, buffer, size, 0);
     if (n >= 0) return n;
 
@@ -97,7 +97,7 @@ capi::OpState capi::CAPI::on_recv(int fd) {
     char buffer[4096];
 
     while (true) {
-        ssize_t buffer_size = readn(fd, buffer, sizeof(buffer));
+        ssize_t buffer_size = try_recv(fd, buffer, sizeof(buffer));
         if (buffer_size < 0) {
             return (last_error_.code == OpCode::RECV_EAGAIN) ? OpState::OK : OpState::WARN;
         }
@@ -109,14 +109,10 @@ capi::OpState capi::CAPI::on_recv(int fd) {
 
         auto pos = message.find("\r\n\r\n");
         if (pos != std::string::npos) {
-            size_t first_crlf = message.find("\r\n");
-            std::string_view header_view;
-            if (first_crlf != std::string::npos && first_crlf < pos) {
-                header_view = std::string_view(message).substr(first_crlf + 2, pos - first_crlf - 2);
-            }
+            std::string header = message.substr(0, pos + 2);
             message.erase(0, pos + 4);
 
-            OpState res = content_processing(header_view, fd);
+            OpState res = content_processing(header, fd);
 
             close_conn(fd);
 
@@ -141,7 +137,7 @@ capi::OpState capi::CAPI::content_processing(std::string_view header, int fd) {
     char buffer[4096];
     while (rem > 0) {
         std::size_t want = std::min(rem, sizeof(buffer));
-        ssize_t buffer_size = readn(fd, buffer, want);
+        ssize_t buffer_size = try_recv(fd, buffer, want);
         if (buffer_size == 0) {
             set_last_error(OpState::WARN, OpCode::BODY_INCOMPLETE, errno,
                 "content processing: message_length is " +

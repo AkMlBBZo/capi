@@ -16,4 +16,5 @@ add_executable(CXX_REST_API main.cpp
         http/http_parser.h
         core/CAPI.cpp
         core/CAPI.h
-        core/error.h)
+        core/error.h
+        http/http_headers.h)
