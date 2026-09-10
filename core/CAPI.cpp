@@ -128,9 +128,12 @@ capi::OpState capi::CAPI::content_processing(std::string_view header, int fd) {
 
     auto opt_len = http.content_length();
     if (!opt_len) {
-        return send_response("empty body\n", fd);
+        std::string result = router_.route(http.request);
+
+        return send_response(result, fd);
     }
 
+    // TODO: move it to another function
     auto& message = messages_[fd];
 
     std::size_t rem = opt_len.value() - message.size();
@@ -152,7 +155,11 @@ capi::OpState capi::CAPI::content_processing(std::string_view header, int fd) {
         rem -= static_cast<std::size_t>(buffer_size);
     }
 
-    return send_response(std::to_string(message.size()) + "\n", fd);
+    http.set_body(message);
+
+    std::string result = router_.route(http.request);
+
+    return send_response(result, fd);
 }
 
 capi::OpState capi::CAPI::close_conn(int fd) {
@@ -234,6 +241,10 @@ capi::CAPI::~CAPI() {
     if (epoll_fd_ != -1)
         ::close(epoll_fd_);
     messages_.clear();
+}
+
+capi::Router & capi::CAPI::router() {
+    return router_;
 }
 
 capi::CAPI::CAPI(CAPI&& other) noexcept

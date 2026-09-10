@@ -88,7 +88,7 @@ errno → OpCode (RECV_EAGAIN / RECV_CONN_RESET), пишет в last_error_.
 
 ---
 
-### Version: 3 - commit: current
+### Version: 3 - commit: [3afb45fe8af2eb8a735d99001a4416c620415ece](https://github.com/AkMlBBZo/capi/commit/3afb45fe8af2eb8a735d99001a4416c620415ece)
 
 ## ADR 5: std::string header = substr(...) с копией, а не string_view
 
@@ -106,5 +106,39 @@ errno → OpCode (RECV_EAGAIN / RECV_CONN_RESET), пишет в last_error_.
     копия хедера гарантирует правильность обработки
   - `pos + 2` в `message.substr(...)`, т.к. `http_parser::parse_header(...)`
     только строки, после которых есть `"\r\n"`
+
+---
+
+### Version: 4 - commit: current
+
+## ADR 6: Router между http/ и приложением
+
+**Контекст:**
+HTTP-парсер (`http/http_parser`) выдаёт `Request` с method/path/query/body,
+вся логика в `capi::CAPI`, который должен заниматься сокетами, epoll
+
+**Решение:** новая директория `router/` с классом `capi::Router`.
+  - `struct Route { std::string path; HttpMethod method; Handler handler; }`
+  - `using Handler = std::function<std::string(const Request&)>`
+  - `Router` хранит `std::vector<Route>`, маршрутизация — линейный поиск по
+    `(path)`.
+  - `CAPI` владеет роутером как членом (`Router router_` в private), наружу
+    торчит геттер `Router& CAPI::router()`. Регистрация маршрутов — в `main.cpp`
+    между `create()` и `run()`.
+
+**Почему так:**
+  - Разделение ответственности
+  - CAPI не знает маршруты
+  - Геттер, а не прокси-методы: в будущем не придется дописывать новые
+    методы в CAPI (при изменении Router)
+
+**TODO:**
+  - Добавить проверку по методу
+  - Переход на префиксное дерево по path
+  - `Request::body` — `string_view`, валиден только синхронно. 
+    Возможно потребуется заменить на std::string
+  - Обработка исключений и другие возвращаемые значения
+  - Поддержка path/query параметров
+
 
 ---

@@ -2,7 +2,6 @@
 
 #include <charconv>
 #include <cctype>
-#include <iostream>
 
 namespace capi {
 
@@ -126,6 +125,11 @@ bool http_parser::parse_header(std::string_view header_view) {
         header_view = header_view.substr(pos + 2);
     }
 
+    return true;
+}
+
+bool http_parser::set_body(std::string_view body) {
+    request.body = body;
     return true;
 }
 
