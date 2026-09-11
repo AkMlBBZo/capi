@@ -18,6 +18,14 @@ cmake --build .
 
 Listens on `0.0.0.0:8091`.
 
+## Test
+
+```bash
+cmake -B build-test -S .
+cmake --build build-test
+ctest --test-dir build-test --output-on-failure
+```
+
 ## License
 
 MIT.

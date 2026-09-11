@@ -109,7 +109,7 @@ errno → OpCode (RECV_EAGAIN / RECV_CONN_RESET), пишет в last_error_.
 
 ---
 
-### Version: 4 - commit: current
+### Version: 4 - commit: [fe0c9271b6a04dcf0a56928892ab3967f96ca87a](https://github.com/AkMlBBZo/capi/commit/fe0c9271b6a04dcf0a56928892ab3967f96ca87a)
 
 ## ADR 6: Router между http/ и приложением
 

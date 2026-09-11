@@ -12,7 +12,7 @@ std::string capi::Router::route(const Request &request) {
     if (!request.valid)
         return "Bad Response\n";
     for (const auto& route : routes_) {
-        if (route.path == request.path) {
+        if (route.path == request.path && route.method == request.method) {
             return route.handler(request);
         }
     }

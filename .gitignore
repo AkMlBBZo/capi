@@ -1,5 +1,5 @@
 cmake-build*/
-build/
+build*/
 *.o
 *.obj
 *.exe
@@ -13,4 +13,3 @@ build/
 *.tmp
 
 /main
-tests/

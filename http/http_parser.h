@@ -18,7 +18,7 @@ struct Request {
     std::string_view path;
     std::string_view query;
     HttpVersion version = HttpVersion::UNKNOWN;
-    std::string_view body;
+    std::string body;
     bool valid = false;
 };
 
@@ -34,7 +34,7 @@ public:
 
     bool parse_firstline(std::string_view line);
     bool parse_header(std::string_view header_view);
-    bool set_body(std::string_view body);
+    bool set_body(std::string body);
 
     [[nodiscard]] std::optional<std::string> get_value(const std::string& header_name) const;
     [[nodiscard]] std::optional<std::size_t> content_length() const;

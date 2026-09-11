@@ -128,8 +128,8 @@ bool http_parser::parse_header(std::string_view header_view) {
     return true;
 }
 
-bool http_parser::set_body(std::string_view body) {
-    request.body = body;
+bool http_parser::set_body(std::string body) {
+    request.body = std::move(body);
     return true;
 }
 
