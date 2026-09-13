@@ -22,6 +22,8 @@ private:
     OpError last_error_;
     Router router_;
 
+    static void set_sigaction();
+
     void set_last_error(OpState state, OpCode code, int sys_errno, std::string message);
 
     int epoll_ctl_set(int op, int fd);

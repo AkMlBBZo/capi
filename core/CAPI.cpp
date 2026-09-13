@@ -12,6 +12,24 @@
 #include <unistd.h>
 #include <netinet/in.h>
 #include <sys/epoll.h>
+#include <csignal>
+
+namespace {
+    volatile sig_atomic_t g_running = 1;
+
+    void on_signal(int /*signo*/) {
+        g_running = 0;
+    }
+}
+
+void capi::CAPI::set_sigaction() {
+    struct sigaction act{};
+    act.sa_handler = on_signal;
+    sigemptyset(&act.sa_mask);
+    act.sa_flags = 0;
+    sigaction(SIGINT, &act, nullptr);
+    sigaction(SIGTERM, &act, nullptr);
+}
 
 void capi::CAPI::set_last_error(OpState state, OpCode code, int sys_errno, std::string message) {
     std::cerr << message << std::endl;
@@ -257,9 +275,10 @@ capi::CAPI::CAPI(CAPI&& other) noexcept
 }
 
 void capi::CAPI::run() {
+    set_sigaction();
     epoll_event events[64];
 
-    while (true) {
+    while (g_running) {
         int n = epoll_wait(epoll_fd_, events, 64, -1);
         if (n == -1) {
             if (errno == EINTR) continue;

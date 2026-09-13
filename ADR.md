@@ -133,12 +133,55 @@ HTTP-парсер (`http/http_parser`) выдаёт `Request` с method/path/que
     методы в CAPI (при изменении Router)
 
 **TODO:**
-  - Добавить проверку по методу
+  - [x] Добавить проверку по методу
   - Переход на префиксное дерево по path
-  - `Request::body` — `string_view`, валиден только синхронно. 
-    Возможно потребуется заменить на std::string
+  - [x] `Request::body` — `string_view`, валиден только синхронно. 
+    Возможно потребуется заменить на std::string (заменено)
   - Обработка исключений и другие возвращаемые значения
   - Поддержка path/query параметров
+
+
+---
+
+### Version: 5 - commit: current
+
+## ADR 7: graceful shutdown через `volatile sig_atomic_t g_running` + sigaction
+
+**Контекст:**
+SIGINT / SIGTERM убивали: `epoll_wait` прерывался ядром, 
+сокеты не закрывались нормально.
+
+**Решение:**
+```cpp
+namespace {
+    volatile sig_atomic_t g_running = 1;
+
+    void on_signal(int /*signo*/) {
+        g_running = 0;
+    }
+}
+```
+- `sigaction(SIGINT/SIGTERM, ...)` в `CAPI::run()`
+- в `run()` `while(g_running)`
+- `sa_flags = 0` (без `SA_RESTART`) — хотим EINTR из `epoll_wait` для проверки флага
+
+**Почему так:**
+
+- **`volatile sig_atomic_t`, не `std::atomic<bool>`.** POSIX-чистое решение. 
+  `std::atomic` может тащить TLS. Т.к. все работает в одном треде, `std::atomic` - перебор.
+
+- **`sig_atomic_t`, не `int`/`bool`.** Чтение/запись атомарны на уровне
+  целевой платформы согласно POSIX
+
+- **`volatile`.** Без него компилятор может закэшировать данные в регистре между 
+  итерациями `while`
+
+- **File-scope, не поле CAPI.** Handler — `void(*)(int)`, не имеет `this`,
+  не может писать в поле. Альтернатива через `g_instance` (указатель на текущий
+  CAPI) добавляет coupling и race при lifecycle.
+
+- **`sa_flags = 0`, не `SA_RESTART`.** С `SA_RESTART` мы не получим EINTR, 
+  не сможем проверить `g_running` и выйти из цикла.
 
 
 ---
