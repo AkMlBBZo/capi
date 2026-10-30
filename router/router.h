@@ -5,31 +5,26 @@
 #ifndef CXX_REST_API_ROUTER_H
 #define CXX_REST_API_ROUTER_H
 
-#include <functional>
-#include <vector>
 #include <string>
 
-#include "../http/http_headers.h"
-#include "../http/http_parser.h"
+#include "http/http_parser.h"
+#include "router/storage/base.h"
 
 namespace capi {
 
-using Handler = std::function<std::string(const Request&)>;
-
-struct Route {
-    std::string path;
-    HttpMethod method = HttpMethod::NONE;
-    Handler handler;
-};
-
+template<class Storage>
 class Router {
 private:
-    std::vector<Route> routes_;
+    Storage storage_;
+
+    static bool parse_query_params(std::string& query, RequestParams& params);
 
 public:
-    void add_route(const Route& route);
+    explicit Router() = default;
 
-    std::string route(const Request& request);
+    bool add_route(const Route& route);
+
+    Response route(const Request& request);
 };
 
 }

@@ -7,6 +7,8 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <type_traits>
+#include <sys/types.h>
 #include <unordered_map>
 
 #include "error.h"
@@ -14,13 +16,14 @@
 
 namespace capi {
 
+template<class Storage>
 class CAPI {
 private:
     int epoll_fd_ = -1;
     int server_fd_ = -1;
     std::unordered_map<int, std::string> messages_;
     OpError last_error_;
-    Router router_;
+    Router<Storage> router_;
 
     static void set_sigaction();
 
@@ -35,18 +38,18 @@ private:
     OpState on_recv(int fd);
     OpState content_processing(std::string_view header_view, int fd);
     OpState close_conn(int fd);
-    OpState send_response(const std::string& body, int fd);
+    OpState send_response(const Response& result, int fd);
 
 public:
     explicit CAPI(uint16_t port);
     static std::optional<CAPI> create(uint16_t port);
     ~CAPI();
 
-    Router &router();
+    Router<Storage> &router();
 
     CAPI(const CAPI&) = delete;
     CAPI& operator=(const CAPI&) = delete;
-    CAPI(CAPI&& other) noexcept;
+    CAPI(CAPI&& other) noexcept(std::is_nothrow_move_constructible_v<Router<Storage>>);
     CAPI& operator=(CAPI&& other) noexcept;
 
     void run();
@@ -54,7 +57,5 @@ public:
 };
 
 }
-
-
 
 #endif //CXX_REST_API_CAPI_H

@@ -3,16 +3,19 @@
 //
 
 #include "CAPI.h"
-#include "../http/http_parser.h"
 
+#include <csignal>
+#include <algorithm>
+#include <cerrno>
 #include <cstring>
 #include <fcntl.h>
 #include <iostream>
 #include <stdexcept>
 #include <unistd.h>
+#include <utility>
+#include <sys/socket.h>
 #include <netinet/in.h>
 #include <sys/epoll.h>
-#include <csignal>
 
 namespace {
     volatile sig_atomic_t g_running = 1;
@@ -22,7 +25,8 @@ namespace {
     }
 }
 
-void capi::CAPI::set_sigaction() {
+template<class Storage>
+void capi::CAPI<Storage>::set_sigaction() {
     struct sigaction act{};
     act.sa_handler = on_signal;
     sigemptyset(&act.sa_mask);
@@ -31,7 +35,8 @@ void capi::CAPI::set_sigaction() {
     sigaction(SIGTERM, &act, nullptr);
 }
 
-void capi::CAPI::set_last_error(OpState state, OpCode code, int sys_errno, std::string message) {
+template<class Storage>
+void capi::CAPI<Storage>::set_last_error(OpState state, OpCode code, int sys_errno, std::string message) {
     std::cerr << message << std::endl;
     last_error_ = {
         state,
@@ -41,7 +46,8 @@ void capi::CAPI::set_last_error(OpState state, OpCode code, int sys_errno, std::
     };
 }
 
-int capi::CAPI::epoll_ctl_set(int op, int fd) {
+template<class Storage>
+int capi::CAPI<Storage>::epoll_ctl_set(int op, int fd) {
     epoll_event ev{};
     ev.events = EPOLLIN;
     ev.data.fd = fd;
@@ -53,7 +59,8 @@ int capi::CAPI::epoll_ctl_set(int op, int fd) {
     return res;
 }
 
-int capi::CAPI::set_nonblock(int fd) {
+template<class Storage>
+int capi::CAPI<Storage>::set_nonblock(int fd) {
     int flags = fcntl(fd, F_GETFL, 0);
     if (flags == -1) {
         set_last_error(OpState::WARN, OpCode::SET_NONBLOCK_FAILED, errno,
@@ -68,7 +75,8 @@ int capi::CAPI::set_nonblock(int fd) {
     return 0;
 }
 
-ssize_t capi::CAPI::try_recv(int fd, char *buffer, size_t size) {
+template<class Storage>
+ssize_t capi::CAPI<Storage>::try_recv(int fd, char *buffer, size_t size) {
     ssize_t n = recv(fd, buffer, size, 0);
     if (n >= 0) return n;
 
@@ -82,7 +90,8 @@ ssize_t capi::CAPI::try_recv(int fd, char *buffer, size_t size) {
     return -1;
 }
 
-capi::OpState capi::CAPI::on_accept() {
+template<class Storage>
+capi::OpState capi::CAPI<Storage>::on_accept() {
     sockaddr_in client_addr{};
     socklen_t len = sizeof(client_addr);
     const int client_fd = accept(server_fd_, reinterpret_cast<struct sockaddr*>(&client_addr), &len);
@@ -110,7 +119,8 @@ capi::OpState capi::CAPI::on_accept() {
     return OpState::OK;
 }
 
-capi::OpState capi::CAPI::on_recv(int fd) {
+template<class Storage>
+capi::OpState capi::CAPI<Storage>::on_recv(int fd) {
     auto& message = messages_[fd];
     char buffer[4096];
 
@@ -140,13 +150,15 @@ capi::OpState capi::CAPI::on_recv(int fd) {
     return OpState::OK;
 }
 
-capi::OpState capi::CAPI::content_processing(std::string_view header, int fd) {
+template<class Storage>
+capi::OpState capi::CAPI<Storage>::content_processing(std::string_view header, int fd) {
     http_parser http;
-    http.parse_header(header);
+    if (!http.parse_header(header))
+        return send_response({ResponseStatus::Error, "Bad Response\n"}, fd);
 
     auto opt_len = http.content_length();
     if (!opt_len) {
-        std::string result = router_.route(http.request);
+        Response result = router_.route(http.request);
 
         return send_response(result, fd);
     }
@@ -175,34 +187,33 @@ capi::OpState capi::CAPI::content_processing(std::string_view header, int fd) {
 
     http.set_body(message);
 
-    std::string result = router_.route(http.request);
+    Response result = router_.route(http.request);
 
     return send_response(result, fd);
 }
 
-capi::OpState capi::CAPI::close_conn(int fd) {
+template<class Storage>
+capi::OpState capi::CAPI<Storage>::send_response(const Response &result, int fd) {
+    std::string response = result.to_http();
+
+    if (send(fd, response.data(), response.size(), MSG_NOSIGNAL) == -1) {
+        set_last_error(OpState::WARN, OpCode::SEND_FAILED, errno, "send: send failed " + response);
+        return OpState::WARN;
+    }
+
+    return OpState::OK;
+}
+
+template<class Storage>
+capi::OpState capi::CAPI<Storage>::close_conn(int fd) {
     epoll_ctl_set(EPOLL_CTL_DEL, fd);
     close(fd);
     messages_.erase(fd);
     return OpState::OK;
 }
 
-// TODO: other responses
-capi::OpState capi::CAPI::send_response(const std::string &body, int fd) {
-    std::string response =
-                "HTTP/1.1 200 OK\r\n"
-                "Content-Type: text/plain\r\n"
-                "Content-Length: " + std::to_string(body.size()) + "\r\n"
-                "Connection: close\r\n"
-                "\r\n" + body;
-    if (send(fd, response.data(), response.size(), MSG_NOSIGNAL) == -1) {
-        set_last_error(OpState::WARN, OpCode::SEND_FAILED, errno, "send: send failed");
-        return OpState::WARN;
-    }
-    return OpState::OK;
-}
-
-capi::CAPI::CAPI(uint16_t port) {
+template<class Storage>
+capi::CAPI<Storage>::CAPI(uint16_t port) {
     server_fd_ = socket(AF_INET, SOCK_STREAM, 0);
     if (server_fd_ == -1) {
         throw std::runtime_error("socket failed: " + std::string(strerror(errno)));
@@ -244,7 +255,8 @@ capi::CAPI::CAPI(uint16_t port) {
     }
 }
 
-std::optional<capi::CAPI> capi::CAPI::create(uint16_t port) {
+template<class Storage>
+std::optional<capi::CAPI<Storage>> capi::CAPI<Storage>::create(uint16_t port) {
     try {
         return CAPI(port);
     } catch (const std::exception& e) {
@@ -253,7 +265,8 @@ std::optional<capi::CAPI> capi::CAPI::create(uint16_t port) {
     }
 }
 
-capi::CAPI::~CAPI() {
+template<class Storage>
+capi::CAPI<Storage>::~CAPI() {
     if (server_fd_ != -1)
         ::close(server_fd_);
     if (epoll_fd_ != -1)
@@ -261,20 +274,24 @@ capi::CAPI::~CAPI() {
     messages_.clear();
 }
 
-capi::Router & capi::CAPI::router() {
+template<class Storage>
+capi::Router<Storage> & capi::CAPI<Storage>::router() {
     return router_;
 }
 
-capi::CAPI::CAPI(CAPI&& other) noexcept
+template<class Storage>
+capi::CAPI<Storage>::CAPI(CAPI&& other) noexcept(std::is_nothrow_move_constructible_v<Router<Storage>>)
     : epoll_fd_(other.epoll_fd_),
       server_fd_(other.server_fd_),
       messages_(std::move(other.messages_)),
-      last_error_(std::move(other.last_error_)) {
+      last_error_(std::move(other.last_error_)),
+      router_(std::move(other.router_)) {
     other.epoll_fd_ = -1;
     other.server_fd_ = -1;
 }
 
-void capi::CAPI::run() {
+template<class Storage>
+void capi::CAPI<Storage>::run() {
     set_sigaction();
     epoll_event events[64];
 
@@ -296,6 +313,11 @@ void capi::CAPI::run() {
     }
 }
 
-const capi::OpError & capi::CAPI::last_error() const {
+template<class Storage>
+const capi::OpError & capi::CAPI<Storage>::last_error() const {
     return last_error_;
 }
+
+// TODO: move it to other file
+#include "router/storage/linear_storage.h"
+template class capi::CAPI<capi::LinearStorage>;
